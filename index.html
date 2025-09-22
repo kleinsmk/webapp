@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ansible Deployment Configuration Generator</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .json-display {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.375rem;
+        }
+        .server-card {
+            border-left: 4px solid #0d6efd;
+        }
+        .disk-item {
+            background-color: #f8f9fa;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Wizard Styles */
+        .wizard-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+        
+        .wizard-progress {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+        
+        .wizard-progress::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step-indicator {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+            background: white;
+            padding: 0 1rem;
+        }
+        
+        .step-indicator .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            border: 2px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .step-indicator.active .step-circle {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            color: white;
+        }
+        
+        .step-indicator.completed .step-circle {
+            background-color: #198754;
+            border-color: #198754;
+            color: white;
+        }
+        
+        .step-indicator .step-title {
+            font-size: 0.875rem;
+            text-align: center;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .step-indicator.active .step-title {
+            color: #0d6efd;
+            font-weight: 600;
+        }
+        
+        .wizard-content {
+            min-height: 400px;
+            margin-bottom: 3rem;
+        }
+        
+        .wizard-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 2rem;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .validation-errors {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .validation-errors ul {
+            margin-bottom: 0;
+        }
+        
+        .field-error {
+            border-color: #dc3545 !important;
+        }
+        
+        .curl-display {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+        }
+        .response-display {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            font-family: 'Courier New', monospace;
+        }
+        .webhook-section {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+        .section-hidden {
+            display: none;
+        }
+        
+        .original-content {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Wizard Container -->
+    <div class="wizard-container">
+        <!-- Wizard Progress -->
+        <div class="wizard-progress">
+            <div class="step-indicator" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-title">Deployment Target</div>
+            </div>
+            <div class="step-indicator" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-title">Servers & Tags</div>
+            </div>
+            <div class="step-indicator" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-title">Deployment Settings</div>
+            </div>
+            <div class="step-indicator" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-title">Review & Submit</div>
+            </div>
+        </div>
+        
+        <!-- Wizard Content -->
+        <div class="wizard-content" id="wizard-content">
+            <!-- Step content will be dynamically inserted here -->
+        </div>
+        
+        <!-- Wizard Navigation -->
+        <div class="wizard-navigation">
+            <button type="button" class="btn btn-outline-secondary" id="btn-back" disabled>
+                <i class="bi bi-arrow-left me-2"></i>Back
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-next">
+                Next<i class="bi bi-arrow-right ms-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Original Content (Hidden) -->
+    <div class="original-content">
+        <div class="container-fluid" style="max-width: 1200px;">
+
+            <!-- Deployment Settings Section -->
+            <div class="row mb-4">
+                <div class="col">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Deployment Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_target" class="form-label">Deployment Target</label>
+                                    <input type="text" class="form-control" id="deployment_target" value="azure" readonly>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_subscription_id" class="form-label">Subscription ID</label>
+                                    <input type="text" class="form-control" id="deployment_subscription_id" value="5ac22dcf-cbd7-433f-bdb5-3a4ebef15ae3">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_resource_group" class="form-label">Resource Group</label>
+                                    <input type="text" class="form-control" id="deployment_resource_group" value="AnsibleTestDeployRG">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_location" class="form-label">Location</label>
+                                    <select class="form-select" id="deployment_location">
+                                        <option value="East US">East US</option>
+                                        <option value="South Central US" selected>South Central US</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_vnet_name" class="form-label">VNet Name</label>
+                                    <input type="text" class="form-control" id="deployment_vnet_name" value="DA2-IS-LAB-VNET">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_vnet_resource_group" class="form-label">VNet Resource Group</label>
+                                    <input type="text" class="form-control" id="deployment_vnet_resource_group" value="DLLS-CoreInfrastructure">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="deployment_subnet_name" class="form-label">Subnet Name</label>
+                                    <input type="text" class="form-control" id="deployment_subnet_name" value="LAB-DEV01-SUS">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Servers Section -->
+            <div class="row mb-4">
+                <div class="col">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-server me-2"></i>Servers</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="servers-container"></div>
+                            <button type="button" class="btn btn-success" id="add-server-btn">
+                                <i class="bi bi-plus-circle me-2"></i>Add Server
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tags Section -->
+            <div class="row mb-4">
+                <div class="col">
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-tags me-2"></i>Tags</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="tag_resource_owner_email" class="form-label">Resource Owner E-mail</label>
+                                    <input type="email" class="form-control" id="tag_resource_owner_email" placeholder="user@example.com">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="tag_product_name" class="form-label">Product Name</label>
+                                    <input type="text" class="form-control" id="tag_product_name" placeholder="My Project">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="tag_product_group" class="form-label">Product Group</label>
+                                    <input type="text" class="form-control" id="tag_product_group" value="Hosting Services - Infra Operations">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="tag_created_by" class="form-label">Created By</label>
+                                    <input type="email" class="form-control" id="tag_created_by" placeholder="user@example.com">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate JSON Button -->
+            <div class="row mb-4">
+                <div class="col text-center">
+                    <button type="button" class="btn btn-primary btn-lg" id="generate-json-btn">
+                        <i class="bi bi-file-earmark-code me-2"></i>Generate JSON Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JSON Modal -->
+    <div class="modal fade" id="jsonModal" tabindex="-1" aria-labelledby="jsonModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="jsonModalLabel">
+                        <i class="bi bi-file-earmark-code me-2"></i>Generated JSON Configuration
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="json-display">
+                        <pre><code id="json-output"></code></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="copy-json-btn">
+                        <i class="bi bi-clipboard me-2"></i>Copy to Clipboard
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhook Modal -->
+    <div class="modal fade" id="webhookModal" tabindex="-1" aria-labelledby="webhookModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="webhookModalLabel">
+                        <i class="bi bi-cloud-arrow-up me-2"></i>Webhook Request
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Phase 1: curl Command Display -->
+                    <div class="webhook-section" id="curl-section">
+                        <h6><i class="bi bi-terminal me-2"></i>curl Command Preview</h6>
+                        <div class="curl-display" id="curl-output"></div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-success" id="execute-webhook-btn">
+                                <i class="bi bi-play-circle me-2"></i>Execute Webhook
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2: Loading State -->
+                    <div class="webhook-section section-hidden" id="loading-section">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Sending request to Ansible Automation Platform...</p>
+                        </div>
+                    </div>
+
+                    <!-- Phase 3: Response Display -->
+                    <div class="webhook-section section-hidden" id="response-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6><i class="bi bi-server me-2"></i>Response</h6>
+                            <div>
+                                <span id="response-status-badge" class="badge"></span>
+                                <small class="text-muted ms-2" id="response-timestamp"></small>
+                            </div>
+                        </div>
+                        <div class="response-display" id="response-output"></div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-outline-primary" id="copy-response-btn">
+                                <i class="bi bi-clipboard me-2"></i>Copy Response
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JavaScript Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // ABOUTME: This file implements a wizard-style deployment configuration form
+        // ABOUTME: Converting the original single-page form into a multi-step guided process
+
+        // Configuration - Update these values for your environment
+        const BEARER_TOKEN = "faketokenhere"; // Replace with your actual Ansible API token
+        const WEBHOOK_URL = "https://platform.aapqya3ji36l5cec.ansiblecloud.redhat.com/api/controller/v2/job_templates/568/launch";
+
+        // Global wizard variables
+        let currentStep = 1;
+        const totalSteps = 4;
+
+        // Original global variables preserved
+        let serverCount = 0;
+        let diskCounters = {};
+
+        // Domain join configurations
+        const domainConfigs = {
+            'Prod': {
+                domain_name: 'resource.ds.bah.com',
+                domain_ou_path: 'OU=Terraform,OU=Production,OU=Servers,DC=RESOURCE,DC=DS,DC=BAH,DC=COM'
+            },
+            'Dev': {
+                domain_name: 'bahtest.bah.com',
+                domain_ou_path: 'OU=Terraform,OU=Legacy,OU=Servers,DC=BAHTEST,DC=BAH,DC=COM'
+            }
+        };
+
+        // WizardState - Centralized state management
+        const WizardState = {
+            data: {
+                deploymentTarget: "Azure",
+                subscriptionId: "5ac22dcf-cbd7-433f-bdb5-3a4ebef15ae3",
+                servers: [],
+                tags: {
+                    resourceOwnerEmail: "",
+                    productName: "",
+                    productGroup: "Hosting Services - Infra Operations",
+                    createdBy: ""
+                },
+                deploymentSettings: {
+                    location: "South Central US",
+                    resourceGroup: "AnsibleTestDeployRG",
+                    vnetName: "DA2-IS-LAB-VNET",
+                    vnetResourceGroup: "DLLS-CoreInfrastructure",
+                    subnetName: "LAB-DEV01-SUS"
+                }
+            },
+
+            getState() {
+                return JSON.parse(JSON.stringify(this.data));
+            },
+
+            updateDeploymentTarget(target) {
+                this.data.deploymentTarget = target;
+                // Set subscription defaults based on target
+                if (target === "Azure") {
+                    this.data.subscriptionId = "5ac22dcf-cbd7-433f-bdb5-3a4ebef15ae3";
+                } else if (target === "AWS") {
+                    this.data.subscriptionId = "aws-account-123456";
+                } else if (target === "On-Prem") {
+                    this.data.subscriptionId = "on-prem-cluster-01";
+                }
+                console.log('Updated deployment target:', target, 'Subscription:', this.data.subscriptionId);
+            },
+
+            updateSubscriptionId(id) {
+                this.data.subscriptionId = id;
+            },
+
+            addServer() {
+                const newServer = {
+                    name: "",
+                    osType: "Linux",
+                    vmSize: "Standard_D4s_v3",
+                    disks: [{size_gb: 100, managed_disk_type: "Premium_LRS"}],
+                    domainJoin: null
+                };
+                this.data.servers.push(newServer);
+                console.log('Added server, total servers:', this.data.servers.length);
+                return this.data.servers.length - 1;
+            },
+
+            updateServer(index, serverData) {
+                if (index >= 0 && index < this.data.servers.length) {
+                    this.data.servers[index] = { ...this.data.servers[index], ...serverData };
+                }
+            },
+
+            removeServer(index) {
+                if (index >= 0 && index < this.data.servers.length && this.data.servers.length > 1) {
+                    this.data.servers.splice(index, 1);
+                    console.log('Removed server, remaining servers:', this.data.servers.length);
+                    return true;
+                }
+                return false;
+            },
+
+            updateTags(tagData) {
+                this.data.tags = { ...this.data.tags, ...tagData };
+            },
+
+            updateDeploymentSettings(settings) {
+                this.data.deploymentSettings = { ...this.data.deploymentSettings, ...settings };
+            },
+
+            validateStep(stepNumber) {
+                const errors = [];
+                
+                switch (stepNumber) {
+                    case 1:
+                        if (!this.data.deploymentTarget) {
+                            errors.push('Deployment target is required');
+                        }
+                        if (!this.data.subscriptionId.trim()) {
+                            errors.push('Subscription ID is required');
+                        }
+                        break;
+                        
+                    case 2:
+                        if (this.data.servers.length === 0) {
+                            errors.push('At least one server is required');
+                        }
+                        const hasValidServer = this.data.servers.some(server => server.name && server.name.trim());
+                        if (!hasValidServer) {
+                            errors.push('At least one server must have a name');
+                        }
+                        // Validate email fields
+                        if (this.data.tags.resourceOwnerEmail && !this.validateEmail(this.data.tags.resourceOwnerEmail)) {
+                            errors.push('Resource Owner Email must be a valid email address');
+                        }
+                        if (this.data.tags.createdBy && !this.validateEmail(this.data.tags.createdBy)) {
+                            errors.push('Created By must be a valid email address');
+                        }
+                        break;
+                        
+                    case 3:
+                        if (this.data.deploymentTarget === "Azure") {
+                            if (!this.data.deploymentSettings.location) errors.push('Location is required');
+                            if (!this.data.deploymentSettings.vnetName.trim()) errors.push('VNet Name is required');
+                            if (!this.data.deploymentSettings.vnetResourceGroup.trim()) errors.push('VNet Resource Group is required');
+                            if (!this.data.deploymentSettings.subnetName.trim()) errors.push('Subnet Name is required');
+                            if (!this.data.deploymentSettings.resourceGroup.trim()) errors.push('Resource Group is required');
+                        }
+                        break;
+                        
+                    case 4:
+                        // Review step is always valid
+                        break;
+                }
+                
+                return { valid: errors.length === 0, errors };
+            },
+
+            validateEmail(email) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return emailRegex.test(email);
+            }
+        };
+
+        // Step configuration
+        const steps = [
+            { number: 1, title: "Deployment Target", validator: () => WizardState.validateStep(1) },
+            { number: 2, title: "Servers & Tags", validator: () => WizardState.validateStep(2) },
+            { number: 3, title: "Deployment Settings", validator: () => WizardState.validateStep(3) },
+            { number: 4, title: "Review & Submit", validator: () => WizardState.validateStep(4) }
+        ];
+
+        // Navigation functions
+        function updateStepIndicators() {
+            const indicators = document.querySelectorAll('.step-indicator');
+            indicators.forEach((indicator, index) => {
+                const stepNum = index + 1;
+                indicator.classList.remove('active', 'completed');
+                
+                if (stepNum === currentStep) {
+                    indicator.classList.add('active');
+                } else if (stepNum < currentStep) {
+                    indicator.classList.add('completed');
+                    indicator.querySelector('.step-circle').innerHTML = '<i class="bi bi-check"></i>';
+                } else {
+                    indicator.querySelector('.step-circle').textContent = stepNum;
+                }
+            });
+        }
+
+        function canGoNext() {
+            const validation = WizardState.validateStep(currentStep);
+            return validation.valid;
+        }
+
+        function showStepErrors(errors) {
+            clearStepErrors();
+            if (errors.length === 0) return;
+            
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'validation-errors';
+            errorDiv.innerHTML = `
+                <strong>Please fix the following errors:</strong>
+                <ul>
+                    ${errors.map(error => `<li>${error}</li>`).join('')}
+                </ul>
+            `;
+            
+            const wizardContent = document.getElementById('wizard-content');
+            wizardContent.insertBefore(errorDiv, wizardContent.firstChild);
+        }
+
+        function clearStepErrors() {
+            const errorDiv = document.querySelector('.validation-errors');
+            if (errorDiv) {
+                errorDiv.remove();
+            }
+        }
+
+        function updateButtonStates() {
+            const backBtn = document.getElementById('btn-back');
+            const nextBtn = document.getElementById('btn-next');
+            
+            // Back button
+            backBtn.disabled = currentStep === 1;
+            
+            // Next button
+            if (currentStep === 4) {
+                nextBtn.style.display = 'none';
+            } else {
+                nextBtn.style.display = 'inline-block';
+                nextBtn.disabled = !canGoNext();
+                if (currentStep === 3) {
+                    nextBtn.innerHTML = 'Review<i class="bi bi-arrow-right ms-2"></i>';
+                } else {
+                    nextBtn.innerHTML = 'Next<i class="bi bi-arrow-right ms-2"></i>';
+                }
+            }
+        }
+
+        function goNext() {
+            if (!canGoNext()) {
+                const validation = WizardState.validateStep(currentStep);
+                showStepErrors(validation.errors);
+                return;
+            }
+            
+            // Save current step data
+            saveCurrentStep();
+            
+            if (currentStep < totalSteps) {
+                currentStep++;
+                renderCurrentStep();
+                updateStepIndicators();
+                updateButtonStates();
+                clearStepErrors();
+                window.scrollTo(0, 0);
+            }
+        }
+
+        function goBack() {
+            if (currentStep > 1) {
+                // Save current step data before going back
+                saveCurrentStep();
+                
+                currentStep--;
+                renderCurrentStep();
+                updateStepIndicators();
+                updateButtonStates();
+                clearStepErrors();
+                window.scrollTo(0, 0);
+            }
+        }
+
+        function saveCurrentStep() {
+            switch (currentStep) {
+                case 1:
+                    saveStep1();
+                    break;
+                case 2:
+                    saveStep2();
+                    break;
+                case 3:
+                    saveStep3();
+                    break;
+            }
+        }
+
+        // Step 1: Deployment Target
+        function renderStep1() {
+            const content = `
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Deployment Target</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="step1_deployment_target" class="form-label">Deployment Target</label>
+                                <select class="form-select" id="step1_deployment_target">
+                                    <option value="Azure">Azure</option>
+                                    <option value="AWS">AWS</option>
+                                    <option value="On-Prem">On-Premises</option>
+                                </select>
+                                <div class="form-text">Select the target platform for your deployment.</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="step1_subscription_id" class="form-label">Subscription ID</label>
+                                <input type="text" class="form-control" id="step1_subscription_id" placeholder="Enter subscription or account ID">
+                                <div class="form-text">The subscription, account, or cluster identifier for your target platform.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('wizard-content').innerHTML = content;
+            
+            // Populate from state
+            const state = WizardState.getState();
+            document.getElementById('step1_deployment_target').value = state.deploymentTarget;
+            document.getElementById('step1_subscription_id').value = state.subscriptionId;
+            
+            // Add event listeners
+            document.getElementById('step1_deployment_target').addEventListener('change', function() {
+                WizardState.updateDeploymentTarget(this.value);
+                document.getElementById('step1_subscription_id').value = WizardState.getState().subscriptionId;
+                updateButtonStates();
+            });
+            
+            document.getElementById('step1_subscription_id').addEventListener('input', function() {
+                WizardState.updateSubscriptionId(this.value);
+                updateButtonStates();
+            });
+        }
+
+        function saveStep1() {
+            const target = document.getElementById('step1_deployment_target')?.value;
+            const subscriptionId = document.getElementById('step1_subscription_id')?.value;
+            
+            if (target) WizardState.updateDeploymentTarget(target);
+            if (subscriptionId !== undefined) WizardState.updateSubscriptionId(subscriptionId);
+        }
+
+        // Step 2: Servers & Tags
+        function renderStep2() {
+            const content = `
+                <div class="row">
+                    <div class="col-12 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0"><i class="bi bi-server me-2"></i>Servers</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="step2-servers-container"></div>
+                                <button type="button" class="btn btn-success" id="step2-add-server-btn">
+                                    <i class="bi bi-plus-circle me-2"></i>Add Server
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0"><i class="bi bi-tags me-2"></i>Tags</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="step2_resource_owner_email" class="form-label">Resource Owner E-mail</label>
+                                        <input type="email" class="form-control" id="step2_resource_owner_email" placeholder="user@example.com">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="step2_product_name" class="form-label">Product Name</label>
+                                        <input type="text" class="form-control" id="step2_product_name" placeholder="My Project">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="step2_product_group" class="form-label">Product Group</label>
+                                        <input type="text" class="form-control" id="step2_product_group" value="Hosting Services - Infra Operations">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="step2_created_by" class="form-label">Created By</label>
+                                        <input type="email" class="form-control" id="step2_created_by" placeholder="user@example.com">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('wizard-content').innerHTML = content;
+            
+            // Render servers from state
+            renderStep2Servers();
+            
+            // Populate tags from state
+            const state = WizardState.getState();
+            document.getElementById('step2_resource_owner_email').value = state.tags.resourceOwnerEmail;
+            document.getElementById('step2_product_name').value = state.tags.productName;
+            document.getElementById('step2_product_group').value = state.tags.productGroup;
+            document.getElementById('step2_created_by').value = state.tags.createdBy;
+            
+            // Add event listeners for tags
+            ['step2_resource_owner_email', 'step2_product_name', 'step2_product_group', 'step2_created_by'].forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.addEventListener('input', () => {
+                        saveStep2Tags();
+                        updateButtonStates();
+                    });
+                }
+            });
+            
+            // Add server button event listener
+            document.getElementById('step2-add-server-btn').addEventListener('click', addServerToStep2);
+        }
+
+        function renderStep2Servers() {
+            const container = document.getElementById('step2-servers-container');
+            const servers = WizardState.getState().servers;
+            
+            container.innerHTML = '';
+            
+            servers.forEach((server, index) => {
+                container.insertAdjacentHTML('beforeend', createStep2ServerElement(server, index));
+            });
+            
+            // If no servers, add one
+            if (servers.length === 0) {
+                addServerToStep2();
+            }
+        }
+
+        function createStep2ServerElement(server, index) {
+            return `
+                <div class="card server-card mb-3" data-server-index="${index}">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-server me-2"></i>Server #${index + 1}</h6>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removeServerFromStep2(${index})">
+                            <i class="bi bi-trash me-1"></i>Remove
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="step2_server_${index}_name" class="form-label">Server Name</label>
+                                <input type="text" class="form-control" id="step2_server_${index}_name" 
+                                       placeholder="e.g., webserver01" value="${server.name}"
+                                       onchange="updateServerField(${index}, 'name', this.value)">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="step2_server_${index}_os_type" class="form-label">OS Type</label>
+                                <select class="form-select" id="step2_server_${index}_os_type" 
+                                        onchange="updateServerField(${index}, 'osType', this.value); handleStep2OsTypeChange(${index})">
+                                    <option value="Linux" ${server.osType === 'Linux' ? 'selected' : ''}>RHEL</option>
+                                    <option value="Windows" ${server.osType === 'Windows' ? 'selected' : ''}>Windows</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="step2_server_${index}_vm_size" class="form-label">VM Size</label>
+                                <select class="form-select" id="step2_server_${index}_vm_size"
+                                        onchange="updateServerField(${index}, 'vmSize', this.value)">
+                                    <option value="Standard_D4s_v3" ${server.vmSize === 'Standard_D4s_v3' ? 'selected' : ''}>Standard_D4s_v3</option>
+                                    <option value="Standard_D2s_v3" ${server.vmSize === 'Standard_D2s_v3' ? 'selected' : ''}>Standard_D2s_v3</option>
+                                    <option value="Standard_D8s_v3" ${server.vmSize === 'Standard_D8s_v3' ? 'selected' : ''}>Standard_D8s_v3</option>
+                                    <option value="Standard_B2ms" ${server.vmSize === 'Standard_B2ms' ? 'selected' : ''}>Standard_B2ms</option>
+                                    <option value="Standard_B4ms" ${server.vmSize === 'Standard_B4ms' ? 'selected' : ''}>Standard_B4ms</option>
+                                    <option value="Standard_F4s_v2" ${server.vmSize === 'Standard_F4s_v2' ? 'selected' : ''}>Standard_F4s_v2</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Domain Join Section -->
+                        <div class="row ${server.osType !== 'Windows' ? 'd-none' : ''}" id="step2_server_${index}_domain_section">
+                            <div class="col-md-6 mb-3">
+                                <label for="step2_server_${index}_domain_join" class="form-label">Domain Join Environment</label>
+                                <select class="form-select" id="step2_server_${index}_domain_join"
+                                        onchange="updateServerDomainJoin(${index}, this.value)">
+                                    <option value="Prod" ${(server.domainJoin && server.domainJoin.domain_name === 'resource.ds.bah.com') ? 'selected' : ''}>Production</option>
+                                    <option value="Dev" ${(server.domainJoin && server.domainJoin.domain_name === 'bahtest.bah.com') ? 'selected' : ''}>Development</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Disks Section -->
+                        <div class="row">
+                            <div class="col-12">
+                                <h6><i class="bi bi-hdd me-2"></i>Disks</h6>
+                                <div id="step2_server_${index}_disks_container">
+                                    ${server.disks.map((disk, diskIndex) => createStep2DiskElement(index, diskIndex, disk)).join('')}
+                                </div>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addDiskToServer(${index})">
+                                    <i class="bi bi-plus-circle me-1"></i>Add Disk
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function createStep2DiskElement(serverIndex, diskIndex, disk) {
+            return `
+                <div class="disk-item" data-disk-index="${diskIndex}">
+                    <div class="row align-items-end">
+                        <div class="col-md-4">
+                            <label for="step2_server_${serverIndex}_disk_${diskIndex}_size" class="form-label">Size (GB)</label>
+                            <input type="number" class="form-control" id="step2_server_${serverIndex}_disk_${diskIndex}_size" 
+                                   min="1" value="${disk.size_gb}"
+                                   onchange="updateDiskField(${serverIndex}, ${diskIndex}, 'size_gb', parseInt(this.value))">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="step2_server_${serverIndex}_disk_${diskIndex}_type" class="form-label">Managed Disk Type</label>
+                            <select class="form-select" id="step2_server_${serverIndex}_disk_${diskIndex}_type"
+                                    onchange="updateDiskField(${serverIndex}, ${diskIndex}, 'managed_disk_type', this.value)">
+                                <option value="Premium_LRS" ${disk.managed_disk_type === 'Premium_LRS' ? 'selected' : ''}>Premium_LRS</option>
+                                <option value="Standard_LRS" ${disk.managed_disk_type === 'Standard_LRS' ? 'selected' : ''}>Standard_LRS</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeDiskFromServer(${serverIndex}, ${diskIndex})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function addServerToStep2() {
+            const index = WizardState.addServer();
+            renderStep2Servers();
+            updateButtonStates();
+        }
+
+        function removeServerFromStep2(index) {
+            if (WizardState.removeServer(index)) {
+                renderStep2Servers();
+                updateButtonStates();
+            } else {
+                alert('You must have at least one server. Add another server before removing this one.');
+            }
+        }
+
+        function updateServerField(index, field, value) {
+            const servers = WizardState.getState().servers;
+            if (servers[index]) {
+                const updateData = {};
+                updateData[field] = value;
+                WizardState.updateServer(index, updateData);
+                updateButtonStates();
+            }
+        }
+
+        function updateServerDomainJoin(index, env) {
+            const servers = WizardState.getState().servers;
+            if (servers[index]) {
+                WizardState.updateServer(index, { domainJoin: domainConfigs[env] });
+            }
+        }
+
+        function handleStep2OsTypeChange(index) {
+            const domainSection = document.getElementById(`step2_server_${index}_domain_section`);
+            const osType = document.getElementById(`step2_server_${index}_os_type`).value;
+            
+            if (osType === 'Windows') {
+                domainSection.classList.remove('d-none');
+                updateServerDomainJoin(index, 'Prod'); // Default to Prod
+            } else {
+                domainSection.classList.add('d-none');
+                WizardState.updateServer(index, { domainJoin: null });
+            }
+        }
+
+        function addDiskToServer(serverIndex) {
+            const servers = WizardState.getState().servers;
+            if (servers[serverIndex]) {
+                servers[serverIndex].disks.push({size_gb: 100, managed_disk_type: "Premium_LRS"});
+                renderStep2Servers();
+            }
+        }
+
+        function removeDiskFromServer(serverIndex, diskIndex) {
+            const servers = WizardState.getState().servers;
+            if (servers[serverIndex] && servers[serverIndex].disks.length > 1) {
+                servers[serverIndex].disks.splice(diskIndex, 1);
+                renderStep2Servers();
+            }
+        }
+
+        function updateDiskField(serverIndex, diskIndex, field, value) {
+            const servers = WizardState.getState().servers;
+            if (servers[serverIndex] && servers[serverIndex].disks[diskIndex]) {
+                servers[serverIndex].disks[diskIndex][field] = value;
+            }
+        }
+
+        function saveStep2() {
+            saveStep2Tags();
+            // Server data is saved in real-time through event handlers
+        }
+
+        function saveStep2Tags() {
+            const tagData = {
+                resourceOwnerEmail: document.getElementById('step2_resource_owner_email')?.value || '',
+                productName: document.getElementById('step2_product_name')?.value || '',
+                productGroup: document.getElementById('step2_product_group')?.value || '',
+                createdBy: document.getElementById('step2_created_by')?.value || ''
+            };
+            WizardState.updateTags(tagData);
+        }
+
+        // Step 3: Deployment Settings
+        function renderStep3() {
+            const state = WizardState.getState();
+            const isAzure = state.deploymentTarget === "Azure";
+            
+            const content = `
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Deployment Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        ${isAzure ? renderAzureSettings() : renderOtherSettings()}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('wizard-content').innerHTML = content;
+            
+            // Populate fields from state
+            if (isAzure) {
+                document.getElementById('step3_location').value = state.deploymentSettings.location;
+                document.getElementById('step3_resource_group').value = state.deploymentSettings.resourceGroup;
+                document.getElementById('step3_vnet_name').value = state.deploymentSettings.vnetName;
+                document.getElementById('step3_vnet_resource_group').value = state.deploymentSettings.vnetResourceGroup;
+                document.getElementById('step3_subnet_name').value = state.deploymentSettings.subnetName;
+                
+                // Add event listeners
+                ['step3_location', 'step3_resource_group', 'step3_vnet_name', 'step3_vnet_resource_group', 'step3_subnet_name'].forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.addEventListener('input', () => {
+                            saveStep3();
+                            updateButtonStates();
+                        });
+                    }
+                });
+            }
+        }
+
+        function renderAzureSettings() {
+            return `
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="step3_location" class="form-label">Location</label>
+                        <select class="form-select" id="step3_location">
+                            <option value="East US">East US</option>
+                            <option value="South Central US">South Central US</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="step3_resource_group" class="form-label">Resource Group</label>
+                        <input type="text" class="form-control" id="step3_resource_group" placeholder="Enter resource group name">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="step3_vnet_name" class="form-label">VNet Name</label>
+                        <input type="text" class="form-control" id="step3_vnet_name" placeholder="Enter VNet name">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="step3_vnet_resource_group" class="form-label">VNet Resource Group</label>
+                        <input type="text" class="form-control" id="step3_vnet_resource_group" placeholder="Enter VNet resource group">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="step3_subnet_name" class="form-label">Subnet Name</label>
+                        <input type="text" class="form-control" id="step3_subnet_name" placeholder="Enter subnet name">
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOtherSettings() {
+            return `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Configuration options for ${WizardState.getState().deploymentTarget} will be available in a future version.
+                </div>
+            `;
+        }
+
+        function saveStep3() {
+            const state = WizardState.getState();
+            if (state.deploymentTarget === "Azure") {
+                const settings = {
+                    location: document.getElementById('step3_location')?.value || '',
+                    resourceGroup: document.getElementById('step3_resource_group')?.value || '',
+                    vnetName: document.getElementById('step3_vnet_name')?.value || '',
+                    vnetResourceGroup: document.getElementById('step3_vnet_resource_group')?.value || '',
+                    subnetName: document.getElementById('step3_subnet_name')?.value || ''
+                };
+                WizardState.updateDeploymentSettings(settings);
+            }
+        }
+
+        // Step 4: Review & Submit
+        function renderStep4() {
+            const state = WizardState.getState();
+            
+            const content = `
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-eye me-2"></i>Review Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        ${formatDeploymentForReview(state)}
+                        ${formatServersForReview(state.servers)}
+                        ${formatTagsForReview(state.tags)}
+                        
+                        <div class="mt-4 d-flex gap-2 justify-content-center">
+                            <button type="button" class="btn btn-primary btn-lg" onclick="generateJSONFromWizard()">
+                                <i class="bi bi-file-earmark-code me-2"></i>Generate JSON Configuration
+                            </button>
+                            <button type="button" class="btn btn-success btn-lg" onclick="sendWebhookFromWizard()">
+                                <i class="bi bi-cloud-upload me-2"></i>Send to Webhook
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('wizard-content').innerHTML = content;
+        }
+
+        function formatDeploymentForReview(state) {
+            return `
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6 class="border-bottom pb-2"><i class="bi bi-cloud me-2"></i>Deployment Configuration</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <strong>Target:</strong> ${state.deploymentTarget}
+                            </div>
+                            <div class="col-md-8">
+                                <strong>Subscription ID:</strong> ${state.subscriptionId}
+                            </div>
+                        </div>
+                        ${state.deploymentTarget === 'Azure' ? `
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <strong>Location:</strong> ${state.deploymentSettings.location}
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Resource Group:</strong> ${state.deploymentSettings.resourceGroup}
+                            </div>
+                            <div class="col-md-4">
+                                <strong>VNet:</strong> ${state.deploymentSettings.vnetName}
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <strong>VNet Resource Group:</strong> ${state.deploymentSettings.vnetResourceGroup}
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Subnet:</strong> ${state.deploymentSettings.subnetName}
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function formatServersForReview(servers) {
+            return `
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6 class="border-bottom pb-2"><i class="bi bi-server me-2"></i>Servers (${servers.length})</h6>
+                        ${servers.map((server, index) => `
+                            <div class="card mb-2">
+                                <div class="card-body py-2">
+                                    <div class="row">
+                                        <div class="col-md-3">
+                                            <strong>${server.name || 'Unnamed Server'}</strong>
+                                        </div>
+                                        <div class="col-md-2">
+                                            ${server.osType}
+                                        </div>
+                                        <div class="col-md-3">
+                                            ${server.vmSize}
+                                        </div>
+                                        <div class="col-md-4">
+                                            <small class="text-muted">
+                                                ${server.disks.length} disk(s): ${server.disks.map(d => `${d.size_gb}GB`).join(', ')}
+                                                ${server.domainJoin ? `<br>Domain: ${server.domainJoin.domain_name}` : ''}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function formatTagsForReview(tags) {
+            const nonEmptyTags = Object.entries(tags).filter(([key, value]) => value.trim());
+            if (nonEmptyTags.length === 0) {
+                return `
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="border-bottom pb-2"><i class="bi bi-tags me-2"></i>Tags</h6>
+                            <em class="text-muted">No tags specified</em>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6 class="border-bottom pb-2"><i class="bi bi-tags me-2"></i>Tags</h6>
+                        <div class="row">
+                            ${nonEmptyTags.map(([key, value]) => `
+                                <div class="col-md-6 mb-1">
+                                    <strong>${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:</strong> ${value}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // JSON and Webhook Integration
+        function generateBaseConfigFromWizard() {
+            const state = WizardState.getState();
+            
+            const servers = state.servers.filter(server => server.name.trim()).map(server => {
+                const serverData = {
+                    name: server.name.trim(),
+                    os_type: server.osType,
+                    vm_size: server.vmSize,
+                    disks: server.disks
+                };
+                
+                if (server.osType === 'Windows' && server.domainJoin) {
+                    serverData.domain_join = server.domainJoin;
+                }
+                
+                return serverData;
+            });
+            
+            const vmConfig = {
+                deployment_target: state.deploymentTarget.toLowerCase(),
+                subscription_id: state.subscriptionId,
+                resource_group: state.deploymentSettings.resourceGroup,
+                location: state.deploymentSettings.location,
+                vnet_name: state.deploymentSettings.vnetName,
+                vnet_resource_group: state.deploymentSettings.vnetResourceGroup,
+                subnet_name: state.deploymentSettings.subnetName,
+                tags: {
+                    'Resource Owner E-mail': state.tags.resourceOwnerEmail,
+                    'Product Name': state.tags.productName,
+                    'Product Group': state.tags.productGroup,
+                    'Created By': state.tags.createdBy
+                },
+                servers: servers
+            };
+            
+            return vmConfig;
+        }
+
+        function generateJSONFromWizard() {
+            const validation = WizardState.validateStep(4);
+            if (!validation.valid) {
+                alert('Configuration is invalid. Please review all steps.');
+                return;
+            }
+            
+            const vmConfig = generateBaseConfigFromWizard();
+            
+            if (vmConfig.servers.length === 0) {
+                alert('Please add at least one server with a valid name before generating JSON.');
+                return;
+            }
+            
+            const jsonConfig = { vm_config: vmConfig };
+            const jsonString = JSON.stringify(jsonConfig, null, 2);
+            
+            document.getElementById('json-output').textContent = jsonString;
+            const modal = new bootstrap.Modal(document.getElementById('jsonModal'));
+            modal.show();
+        }
+
+        function sendWebhookFromWizard() {
+            const validation = WizardState.validateStep(4);
+            if (!validation.valid) {
+                alert('Configuration is invalid. Please review all steps.');
+                return;
+            }
+            
+            const vmConfig = generateBaseConfigFromWizard();
+            
+            if (vmConfig.servers.length === 0) {
+                alert('Please add at least one server with a valid name before sending webhook.');
+                return;
+            }
+
+            // Generate webhook payload (wrapped in extra_vars)
+            const webhookPayload = {
+                extra_vars: {
+                    vm_config: vmConfig
+                }
+            };
+
+            // Generate curl command with censored token
+            const curlCommand = `curl -X POST "${WEBHOOK_URL}" \\
+  -H "Authorization: Bearer ***CENSORED***" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(webhookPayload, null, 2)}'`;
+
+            // Display curl command
+            document.getElementById('curl-output').textContent = curlCommand;
+            
+            // Reset modal state and show
+            resetWebhookModal();
+            const modal = new bootstrap.Modal(document.getElementById('webhookModal'));
+            modal.show();
+        }
+
+        // Webhook Functions
+
+        // Reset webhook modal to initial state
+        function resetWebhookModal() {
+            document.getElementById('curl-section').classList.remove('section-hidden');
+            document.getElementById('loading-section').classList.add('section-hidden');
+            document.getElementById('response-section').classList.add('section-hidden');
+        }
+
+        // Execute webhook call
+        async function executeWebhook() {
+            // Hide curl section, show loading
+            document.getElementById('curl-section').classList.add('section-hidden');
+            document.getElementById('loading-section').classList.remove('section-hidden');
+
+            try {
+                // Generate payload
+                const vmConfig = generateBaseConfigFromWizard();
+                const webhookPayload = {
+                    extra_vars: {
+                        vm_config: vmConfig
+                    }
+                };
+
+                // Configure request
+                const requestOptions = {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${BEARER_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(webhookPayload)
+                };
+
+                // Make API call
+                const response = await fetch(WEBHOOK_URL, requestOptions);
+                
+                // Hide loading, show response
+                document.getElementById('loading-section').classList.add('section-hidden');
+                document.getElementById('response-section').classList.remove('section-hidden');
+
+                // Handle response
+                if (response.ok) {
+                    const responseData = await response.json();
+                    displayWebhookSuccess(response, responseData);
+                } else {
+                    const errorText = await response.text();
+                    displayWebhookError(response, errorText);
+                }
+
+            } catch (error) {
+                // Hide loading, show response
+                document.getElementById('loading-section').classList.add('section-hidden');
+                document.getElementById('response-section').classList.remove('section-hidden');
+
+                // Handle network errors
+                if (error.name === 'TypeError') {
+                    displayWebhookNetworkError(error);
+                } else {
+                    displayWebhookError(null, error.message);
+                }
+            }
+        }
+
+        // Display successful webhook response
+        function displayWebhookSuccess(response, data) {
+            const statusBadge = document.getElementById('response-status-badge');
+            const timestamp = document.getElementById('response-timestamp');
+            const output = document.getElementById('response-output');
+
+            statusBadge.className = 'badge bg-success';
+            statusBadge.textContent = `${response.status} ${response.statusText}`;
+            timestamp.textContent = new Date().toLocaleString();
+            output.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Display webhook error response
+        function displayWebhookError(response, errorText) {
+            const statusBadge = document.getElementById('response-status-badge');
+            const timestamp = document.getElementById('response-timestamp');
+            const output = document.getElementById('response-output');
+
+            statusBadge.className = 'badge bg-danger';
+            
+            if (response) {
+                statusBadge.textContent = `${response.status} ${response.statusText}`;
+                
+                // Special handling for authentication errors
+                if (response.status === 401) {
+                    output.textContent = `Authentication Error: Please verify your bearer token is correct.\n\nResponse: ${errorText}`;
+                } else if (response.status === 403) {
+                    output.textContent = `Authorization Error: Your token may not have permission to execute this job template.\n\nResponse: ${errorText}`;
+                } else {
+                    output.textContent = errorText;
+                }
+            } else {
+                statusBadge.textContent = 'Request Failed';
+                output.textContent = errorText;
+            }
+            
+            timestamp.textContent = new Date().toLocaleString();
+        }
+
+        // Display network error
+        function displayWebhookNetworkError(error) {
+            const statusBadge = document.getElementById('response-status-badge');
+            const timestamp = document.getElementById('response-timestamp');
+            const output = document.getElementById('response-output');
+
+            statusBadge.className = 'badge bg-warning text-dark';
+            statusBadge.textContent = 'Network Error';
+            timestamp.textContent = new Date().toLocaleString();
+            
+            output.textContent = `Network Error: Unable to connect to Ansible Automation Platform.
+
+This could be due to:
+- CORS restrictions (the server doesn't allow browser requests from this origin)
+- Network connectivity issues
+- Invalid webhook URL
+
+Error details: ${error.message}
+
+Try running the curl command directly in your terminal if the web request fails.`;
+        }
+
+        // Copy response to clipboard
+        async function copyResponseToClipboard() {
+            const responseText = document.getElementById('response-output').textContent;
+            const copyBtn = document.getElementById('copy-response-btn');
+            const originalText = copyBtn.innerHTML;
+            
+            try {
+                await navigator.clipboard.writeText(responseText);
+                copyBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Copied!';
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalText;
+                }, 2000);
+            } catch (err) {
+                alert('Failed to copy to clipboard. Please select and copy manually.');
+            }
+        }
+
+        // Main render function
+        function renderCurrentStep() {
+            switch (currentStep) {
+                case 1:
+                    renderStep1();
+                    break;
+                case 2:
+                    renderStep2();
+                    break;
+                case 3:
+                    renderStep3();
+                    break;
+                case 4:
+                    renderStep4();
+                    break;
+            }
+        }
+
+        // Original functions preserved for modal functionality
+        async function copyToClipboard() {
+            const jsonText = document.getElementById('json-output').textContent;
+            const copyBtn = document.getElementById('copy-json-btn');
+            const originalText = copyBtn.innerHTML;
+            
+            try {
+                await navigator.clipboard.writeText(jsonText);
+                copyBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Copied!';
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalText;
+                }, 2000);
+            } catch (err) {
+                alert('Failed to copy to clipboard. Please select and copy manually.');
+            }
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize wizard
+            updateStepIndicators();
+            updateButtonStates();
+            renderCurrentStep();
+            
+            // Navigation event listeners
+            document.getElementById('btn-next').addEventListener('click', goNext);
+            document.getElementById('btn-back').addEventListener('click', goBack);
+            
+            // Modal event listeners
+            document.getElementById('copy-json-btn').addEventListener('click', copyToClipboard);
+            document.getElementById('execute-webhook-btn').addEventListener('click', executeWebhook);
+            document.getElementById('copy-response-btn').addEventListener('click', copyResponseToClipboard);
+            
+            // Initialize state with one server
+            if (WizardState.getState().servers.length === 0) {
+                WizardState.addServer();
+            }
+            
+            console.log('Wizard initialized with state:', WizardState.getState());
+        });
+    </script>
+</body>
+</html>
